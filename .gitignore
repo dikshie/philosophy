@@ -1,0 +1,11 @@
+# Virtual environment
+bin/
+lib/
+include/
+pyvenv.cfg
+CACHEDIR.TAG
+__pycache__/
+*.pyc
+
+# Local agents
+.agents/
