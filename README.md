@@ -59,6 +59,138 @@ philosophy/
 
 ---
 
+## Installing Lean 4
+
+Lean 4 is managed via **`elan`** (the official Lean version manager, similar to `rustup` in Rust). Below are platform-specific installation instructions for macOS, Linux, FreeBSD, and Windows 11.
+
+### 1. macOS (Apple Silicon & Intel)
+
+#### Option A: Via Homebrew (Recommended)
+```bash
+brew install elan-init
+elan toolchain install stable
+elan default stable
+```
+
+#### Option B: Via Official Shell Script
+```bash
+# 1. Download and run elan installer
+curl -sSf https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y
+
+# 2. Source environment in current shell (and add to ~/.zshrc)
+source "$HOME/.elan/env"
+
+# 3. Set stable toolchain
+elan default stable
+```
+
+---
+
+### 2. Linux (Ubuntu, Debian, Fedora, Arch) & FreeBSD
+
+#### Linux (Ubuntu / Debian / Fedora / Arch)
+1. Ensure build prerequisites and `curl` are installed:
+   ```bash
+   # Ubuntu / Debian
+   sudo apt update && sudo apt install -y curl git gcc g++ make
+
+   # Fedora / RHEL
+   sudo dnf install -y curl git gcc gcc-c++ make
+
+   # Arch Linux
+   sudo pacman -S curl git base-devel
+   ```
+2. Install `elan`:
+   ```bash
+   curl -sSf https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y
+   source "$HOME/.elan/env"
+   elan default stable
+   ```
+
+#### FreeBSD
+On FreeBSD, install prerequisites using `pkg`:
+```bash
+# 1. Install prerequisites
+sudo pkg install curl git bash gmake llvm
+
+# 2. Run elan-init using bash
+curl -sSf https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | bash -s -- -y
+
+# 3. Add elan to your shell profile (~/.shrc, ~/.bashrc, or ~/.zshrc)
+echo 'export PATH="$HOME/.elan/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+
+# 4. Set toolchain
+elan default stable
+```
+*(Note: If precompiled FreeBSD binaries are unavailable for a specific snapshot, FreeBSD Linux binary compatibility can be enabled via `kldload linux64`, or build via FreeBSD ports `math/lean4`.)*
+
+---
+
+### 3. Windows 11
+
+#### Option A: Native PowerShell (Recommended)
+1. Open **PowerShell** (Run as Administrator or standard terminal) and execute:
+   ```powershell
+   Invoke-WebRequest -Uri "https://raw.githubusercontent.com/leanprover/elan/master/elan-init.ps1" -OutFile "elan-init.ps1"
+   .\elan-init.ps1 -y
+   Remove-Item .\elan-init.ps1
+   ```
+2. Close and re-open PowerShell to refresh your `PATH`.
+3. Set default toolchain:
+   ```powershell
+   elan default stable
+   ```
+
+#### Option B: Via Windows Package Manager (`winget`)
+```powershell
+winget install leanprover.elan
+elan default stable
+```
+
+#### Option C: Via WSL2 (Windows Subsystem for Linux)
+If working within WSL2 (Ubuntu on Windows 11), follow the standard [Linux instructions](#linux-ubuntu--debian--fedora--arch):
+```bash
+curl -sSf https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y
+source "$HOME/.elan/env"
+elan default stable
+```
+
+---
+
+### 4. Recommended Editor Setup: Visual Studio Code
+
+Regardless of operating system:
+1. Install [Visual Studio Code](https://code.visualstudio.com/).
+2. Open VS Code Extensions (`Ctrl+Shift+X` or `Cmd+Shift+X`).
+3. Search for and install **`Lean 4`** (Extension ID: `leanprover.lean4`).
+4. When opening any `.lean` file (e.g., `lean/Week01_ClassicalLogic.lean`), the extension will automatically connect to your `elan` toolchain, providing interactive proof states, syntax highlighting, and inline diagnostic messages.
+
+---
+
+### 5. Verifying Your Lean 4 Installation
+
+Run the following commands in your terminal:
+```bash
+# Check elan version
+elan --version
+
+# Check Lean 4 compiler version
+lean --version
+# Expected output: Lean (version 4.x.x, ...)
+
+# Check Lake (Lean build tool and package manager)
+lake --version
+```
+
+To type-check any file from this study repository:
+```bash
+lean lean/Week01_ClassicalLogic.lean
+lean lean/Week04_TypeTheory.lean
+```
+
+---
+
 ## Executing the Computational Tools
 
 ### Python Verifier Suite
