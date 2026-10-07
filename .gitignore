@@ -2,8 +2,11 @@
 bin/
 lib/
 include/
+share/
 pyvenv.cfg
 CACHEDIR.TAG
+.lock
+*.lock
 __pycache__/
 *.pyc
 

@@ -1,85 +1,93 @@
 #!/usr/bin/env python3
 """
-Week 08: Bayesian Epistemic Updater & Dutch Book Calculator
-Focus: Prior Probabilities, Conditionalization, Confirmation Measures, and Rational Betting
+Week 08: Bayesian Epistemic Updater with SymPy & Z3
+Focus: Exact Rational Updating (SymPy), Bayes Factors, and Dutch Book Arbitrage Solver (Z3)
 """
 
-from typing import List, Tuple
+import sympy
+from sympy import Rational, symbols
+import z3
 
 
-class BayesianHypothesis:
-    def __init__(self, name: str, prior: float):
-        self.name = name
-        self.prior = prior
-        self.posterior = prior
+def sympy_exact_bayesian_update():
+    print("--- 1. SymPy Exact Rational Bayesian Updating ---")
+    # Competing physics hypotheses for a 5-sigma resonance:
+    # H1: Genuine new fundamental particle
+    # H2: Statistical fluctuation / detector noise
+    p_h1 = Rational(1, 20)     # Prior: 5%
+    p_h2 = Rational(19, 20)    # Prior: 95%
 
-    def update(self, likelihood: float, p_evidence: float) -> float:
-        """Apply Bayes' Theorem: P(H|E) = P(E|H) * P(H) / P(E)"""
-        self.posterior = (likelihood * self.prior) / p_evidence
-        return self.posterior
+    # Likelihoods:
+    # P(Signal | H1) = 9/10, P(Signal | H2) = 1/50
+    p_e_given_h1 = Rational(9, 10)
+    p_e_given_h2 = Rational(1, 50)
 
-    def confirmation_measure(self) -> float:
-        """Incremental confirmation: c(H, E) = P(H|E) - P(H)"""
-        return self.posterior - self.prior
+    # Law of Total Probability for Evidence P(E):
+    p_e = (p_e_given_h1 * p_h1) + (p_e_given_h2 * p_h2)
 
+    # Posterior P(H1 | E)
+    post_h1 = (p_e_given_h1 * p_h1) / p_e
+    post_h2 = (p_e_given_h2 * p_h2) / p_e
 
-def sequential_bayesian_update(
-    hypotheses: List[BayesianHypothesis],
-    evidence_likelihoods: List[Tuple[str, List[float]]]
-):
-    pass  # Defined directly below
+    # Bayes Factor: P(E | H1) / P(E | H2)
+    bayes_factor = p_e_given_h1 / p_e_given_h2
 
-
-def simulate_bayesian_learning():
-    print("Sequential Bayesian Updating on Physics Hypotheses:")
-    # Two competing theories for an anomaly:
-    # H1: New Fundamental Particle (e.g. Dark Matter candidate)
-    # H2: Instrumentation Calibration Artifact
-    h1 = BayesianHypothesis("H1 (New Particle)", prior=0.05)
-    h2 = BayesianHypothesis("H2 (Detector Artifact)", prior=0.95)
-
-    # Sequence of independent experiment runs yielding anomalous 5-sigma signals
-    # P(Signal | H1) = 0.90, P(Signal | H2) = 0.02
-    signal_runs = [
-        {"run": 1, "p_E_given_H1": 0.90, "p_E_given_H2": 0.05},
-        {"run": 2, "p_E_given_H1": 0.90, "p_E_given_H2": 0.05},
-        {"run": 3, "p_E_given_H1": 0.90, "p_E_given_H2": 0.05},
-        {"run": 4, "p_E_given_H1": 0.90, "p_E_given_H2": 0.05},
-    ]
-
-    for step in signal_runs:
-        run_num = step["run"]
-        l1 = step["p_E_given_H1"]
-        l2 = step["p_E_given_H2"]
-
-        p_e = (l1 * h1.posterior) + (l2 * h2.posterior)
-        old_h1 = h1.posterior
-        h1.posterior = (l1 * old_h1) / p_e
-        h2.posterior = (l2 * h2.posterior) / p_e
-
-        conf = h1.posterior - old_h1
-        print(f"Run {run_num}: P(H1|E) = {h1.posterior:.4f} | P(H2|E) = {h2.posterior:.4f} | Incr. Confirmation: {conf:+.4f}")
+    print(f"Prior P(H1)           : {p_h1} ({float(p_h1):.4f})")
+    print(f"Prior P(H2)           : {p_h2} ({float(p_h2):.4f})")
+    print(f"Bayes Factor B12      : {bayes_factor} (Evidence strongly favors H1)")
+    print(f"Posterior P(H1 | E)   : {post_h1} ({float(post_h1):.4f})")
+    print(f"Posterior P(H2 | E)   : {post_h2} ({float(post_h2):.4f})")
+    print(f"Incremental Confirmation: {post_h1 - p_h1} ({float(post_h1 - p_h1):+.4f})\n")
 
 
-def check_dutch_book(p_a: float, p_not_a: float):
-    """Demonstrate a Dutch Book (guaranteed monetary loss) if credences fail Kolmogorov additivity."""
-    total = p_a + p_not_a
-    print(f"\nEvaluating Credences: P(A) = {p_a}, P(¬A) = {p_not_a} (Sum = {total})")
-    if abs(total - 1.0) < 1e-6:
-        print("-> Coherent credences: Satisfies Kolmogorov axioms. No Dutch Book possible.")
-    elif total > 1.0:
-        # Overconfidence Dutch Book
-        print(f"-> INCOHERENT (Sum > 1.0). Bookie can sell bets on both A and ¬A for a guaranteed profit of {total - 1.0:.2f} per $1 bet!")
+def z3_dutch_book_arbitrage_solver(p_A: float, p_notA: float):
+    """Use Z3 SMT linear programming to prove/find Dutch Book arbitrage if credences violate additivity."""
+    print(f"--- 2. Z3 Dutch Book Arbitrage Solver for Credences P(A)={p_A}, P(¬A)={p_notA} ---")
+    # In betting semantics, an agent with credence p will accept bets with payoff:
+    # Bet on A with stake S1: If A occurs, payout = S1 * (1 - p); if ¬A occurs, payout = -S1 * p
+    # Bookie seeks stakes S1, S2 such that Bookie Profit > 0 in ALL possible states of the world!
+    
+    S1 = z3.Real("S1")  # Stake on A
+    S2 = z3.Real("S2")  # Stake on ¬A
+
+    solver = z3.Solver()
+
+    # Bookie's profit if A is true: S1*p_A - S1*(1 - p_A) is payoff to agent
+    # Equivalently, agent profit in state A = S1 * (1 - p_A) - S2 * p_notA
+    # Bookie profit in state A = S1 * p_A - S1 * (1 - p_A) ?
+    # Standard betting contract: Price to enter bet is P. Payout is 1 if event occurs, 0 otherwise.
+    # Agent pays (S1 * p_A) and (S2 * p_notA).
+    # If A occurs: Bookie pays S1 to agent. Bookie Net Profit = (S1*p_A + S2*p_notA) - S1
+    # If ¬A occurs: Bookie pays S2 to agent. Bookie Net Profit = (S1*p_A + S2*p_notA) - S2
+
+    profit_if_A = (S1 * p_A + S2 * p_notA) - S1
+    profit_if_notA = (S1 * p_A + S2 * p_notA) - S2
+
+    # A Dutch Book exists if there exist non-negative stakes where Bookie Profit > 0 in BOTH worlds!
+    min_profit = z3.Real("min_profit")
+    solver.add(S1 >= 0, S2 >= 0, z3.Or(S1 > 0, S2 > 0))
+    solver.add(profit_if_A >= min_profit)
+    solver.add(profit_if_notA >= min_profit)
+    solver.add(min_profit > 0)
+
+    if solver.check() == z3.sat:
+        m = solver.model()
+        s1_val = m.eval(S1)
+        s2_val = m.eval(S2)
+        p_val = m.eval(min_profit)
+        print(f"  -> DUTCH BOOK ARBITRAGE FOUND (Credences are Incoherent!)")
+        print(f"  -> Bookie stakes: Bet on A = ${s1_val}, Bet on ¬A = ${s2_val}")
+        print(f"  -> Guaranteed Bookie Net Profit: >= ${p_val} regardless of reality!\n")
     else:
-        # Underconfidence Dutch Book
-        print(f"-> INCOHERENT (Sum < 1.0). Bookie can buy bets on both A and ¬A for a guaranteed profit of {1.0 - total:.2f}!")
+        print("  -> Credences are Coherent (Satisfies Kolmogorov Axiom P(A) + P(¬A) = 1.0). No Dutch Book possible!\n")
 
 
 if __name__ == "__main__":
-    print("=== Week 08: Bayesian Epistemic Updater ===\n")
-    simulate_bayesian_learning()
+    print("=== Week 08: Bayesian Epistemic Updater (SymPy & Z3) ===\n")
+    sympy_exact_bayesian_update()
 
-    print("\nDutch Book Theorem Test:")
-    check_dutch_book(0.60, 0.40)  # Coherent
-    check_dutch_book(0.70, 0.50)  # Incoherent (overconfident)
-    check_dutch_book(0.30, 0.40)  # Incoherent (underconfident)
+    # Case 1: Incoherent overconfident credences (0.7 + 0.5 = 1.2 > 1)
+    z3_dutch_book_arbitrage_solver(p_A=0.70, p_notA=0.50)
+
+    # Case 2: Coherent credences (0.6 + 0.4 = 1.0)
+    z3_dutch_book_arbitrage_solver(p_A=0.60, p_notA=0.40)

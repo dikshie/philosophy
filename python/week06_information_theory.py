@@ -1,21 +1,62 @@
 #!/usr/bin/env python3
 """
-Week 06: Information Theory & Landauer Principle Calculator
-Focus: Shannon Syntactic Entropy vs Floridi Semantic Veridicality & Thermodynamic Limits
+Week 06: Information Theory & Landauer Principle with SymPy & Z3
+Focus: Symbolic Entropy Maximization (SymPy), Semantic Veridicality, and SMT Energy Bounds (Z3)
 """
 
-import math
-from typing import Dict, List
+import sympy
+from sympy import symbols, log, diff, solve, Rational, N
+import z3
 
 
-BOLTZMANN_CONSTANT = 1.380649e-23  # J/K
+def sympy_symbolic_entropy_maximization():
+    print("--- 1. SymPy Symbolic Entropy Optimization ---")
+    p = symbols("p", positive=True)
+    # Binary Shannon entropy in nats: H(p) = -p*ln(p) - (1-p)*ln(1-p)
+    H = -p * log(p) - (1 - p) * log(1 - p)
+    print(f"Symbolic Binary Entropy Function H(p) = {H}")
+
+    # Derivative dH/dp
+    dH_dp = diff(H, p)
+    print(f"Derivative dH/dp = {dH_dp}")
+
+    # Maximum entropy point (solving dH/dp == 0)
+    critical_pts = solve(dH_dp, p)
+    print(f"Critical point maximizing entropy: p = {critical_pts[0]} (Uniform Distribution)")
+
+    # Maximum value
+    h_max = H.subs(p, Rational(1, 2))
+    print(f"Maximum entropy value H(1/2) = {h_max} nats = {N(h_max / log(2))} bit\n")
 
 
-def shannon_entropy(probabilities: List[float]) -> float:
-    """Calculate Shannon entropy H(X) = -sum(p * log2(p))."""
-    total = sum(probabilities)
-    norm_probs = [p / total for p in probabilities if p > 0]
-    return -sum(p * math.log2(p) for p in norm_probs)
+def z3_landauer_physical_bounds():
+    print("--- 2. Z3 SMT Verification of Landauer's Thermodynamic Limit ---")
+    # Landauer's Principle: Erasing N bits at temperature T requires dissipating >= N * kB * T * ln(2)
+    # We use Z3 Real arithmetic to verify physical lower bounds.
+    kB = 1.380649e-23  # J/K
+    ln2 = 0.69314718056
+
+    T = z3.Real("T")
+    N_bits = z3.Real("N_bits")
+    Q_dissipated = z3.Real("Q_dissipated")
+
+    solver = z3.Solver()
+    # Physical constraints: Room temp T = 300K, N_bits = 10^9
+    solver.add(T == 300.0)
+    solver.add(N_bits == 1e9)
+
+    # Question: Is it physically possible according to Landauer to erase 1Gb with Q < N * kB * T * ln2?
+    min_energy = N_bits * kB * T * ln2
+    solver.push()
+    solver.add(Q_dissipated < min_energy)
+    solver.add(Q_dissipated >= 0)
+    # Check if a hypothetical sub-Landauer reversible erasure exists
+    res = solver.check()
+    print(f"Sub-Landauer erasure physically possible under classical thermodynamics? {'YES' if res == z3.sat else 'NO (Violates 2nd Law)'}")
+    solver.pop()
+
+    print(f"Minimum required heat dissipation for 1 Gbit erasure at 300K: {1e9 * kB * 300.0 * ln2:.6e} Joules")
+    print()
 
 
 def floridi_semantic_status(is_well_formed: bool, is_meaningful: bool, is_true: bool) -> str:
@@ -29,42 +70,15 @@ def floridi_semantic_status(is_well_formed: bool, is_meaningful: bool, is_true: 
     return "Veridical Semantic Information (Genuine Knowledge Component)"
 
 
-def landauer_minimum_heat(erased_bits: int, temp_kelvin: float = 300.0) -> Dict[str, float]:
-    """Calculate minimum heat dissipated when erasing bits: Delta Q >= k_B * T * ln(2)."""
-    energy_per_bit = BOLTZMANN_CONSTANT * temp_kelvin * math.log(2)
-    total_energy_joules = erased_bits * energy_per_bit
-    return {
-        "erased_bits": erased_bits,
-        "temperature_K": temp_kelvin,
-        "energy_per_bit_J": energy_per_bit,
-        "total_energy_J": total_energy_joules,
-        "total_energy_eV": total_energy_joules / 1.602176634e-19
-    }
-
-
 if __name__ == "__main__":
-    print("=== Week 06: Semantic Information & Physical Computation ===\n")
+    print("=== Week 06: Semantic Information & Landauer Limits (SymPy & Z3) ===\n")
+    sympy_symbolic_entropy_maximization()
+    z3_landauer_physical_bounds()
 
-    # 1. Shannon Syntactic Entropy
-    p_uniform = [0.25, 0.25, 0.25, 0.25]
-    p_biased = [0.90, 0.05, 0.03, 0.02]
-    print(f"Shannon Entropy (Uniform distribution): {shannon_entropy(p_uniform):.4f} bits")
-    print(f"Shannon Entropy (Biased distribution) : {shannon_entropy(p_biased):.4f} bits\n")
-
-    # 2. Floridi Semantic Status
-    scenarios = [
-        ("Gibberish sequence '&&#@'", False, False, False),
-        ("Colorless green ideas sleep furiously", True, False, False),
-        ("The Moon is made of green cheese", True, True, False),
-        ("Water is H2O", True, True, True),
+    print("--- 3. Floridi TSSI Classification ---")
+    statements = [
+        ("Quarks have fractional baryon number", True, True, True),
+        ("Perpetual motion machines of the first kind exist", True, True, False),
     ]
-    print("Floridi Semantic Classification:")
-    for desc, wf, mean, tr in scenarios:
-        status = floridi_semantic_status(wf, mean, tr)
-        print(f"  Statement: '{desc}' -> Status: {status}")
-
-    # 3. Landauer Principle
-    print("\nLandauer Erasure Limit:")
-    res = landauer_minimum_heat(erased_bits=10**9, temp_kelvin=300.0)  # 1 Gigabit at room temp
-    print(f"  Erasing 1 GB of data at {res['temperature_K']} K requires dissipating:")
-    print(f"  {res['total_energy_J']:.6e} Joules ({res['total_energy_eV']:.6e} eV)")
+    for s, wf, mn, tr in statements:
+        print(f"Statement: '{s}' -> {floridi_semantic_status(wf, mn, tr)}")

@@ -1,69 +1,61 @@
 #!/usr/bin/env python3
 """
-Week 10: Scientific Realism vs Constructive Empiricism Evaluator
-Focus: Model-Theoretic Empirical Adequacy, Observable Substructures, and Unobservables
+Week 10: Scientific Realism vs Constructive Empiricism with Z3
+Focus: Model-Theoretic Empirical Substructures, Unobservables, and Realist Semantic Commitments
 """
 
-from typing import Dict, List, Set
+import z3
 
 
-class TheoreticalModel:
-    def __init__(self, name: str, unobservable_entities: Set[str], observable_predictions: Dict[str, float]):
-        self.name = name
-        self.unobservables = unobservable_entities  # e.g. quarks, wavefunction, Higgs field
-        self.observable_predictions = observable_predictions  # metric -> predicted value
+def z3_model_theoretic_realism_analysis():
+    print("--- 1. Model-Theoretic Substructure Embedding in Z3 ---")
+    State = z3.DeclareSort("TheoreticalState")
+    Phenomenon = z3.DeclareSort("ObservablePhenomenon")
 
-    def is_empirically_adequate(self, empirical_observations: Dict[str, float], tolerance: float = 0.05) -> bool:
-        """Van Fraassen criterion: A theory is empirically adequate if its observable
-           submodel matches all actual observable phenomena within experimental tolerance."""
-        for obs_key, actual_val in empirical_observations.items():
-            if obs_key not in self.observable_predictions:
-                return False
-            pred_val = self.observable_predictions[obs_key]
-            if abs(pred_val - actual_val) > tolerance:
-                return False
-        return True
+    # Projection from theoretical states to observable phenomena
+    ObsProj = z3.Function("ObsProj", State, Phenomenon)
+    PositsUnobservable = z3.Function("PositsUnobservable", State, z3.BoolSort())
+    IsPhysicallyReal = z3.Function("IsPhysicallyReal", State, z3.BoolSort())
 
+    obs = z3.Const("obs", Phenomenon)
+    s = z3.Const("s", State)
 
-def evaluate_epistemic_stances(model: TheoreticalModel, empirical_data: Dict[str, float]):
-    adequate = model.is_empirically_adequate(empirical_data)
-    print(f"Theory Model: {model.name}")
-    print(f"  Unobservable Entities Posited: {list(model.unobservables)}")
-    print(f"  Observable Data Match: {adequate}")
+    # 1. Definition of Empirical Adequacy (van Fraassen):
+    # Every actual observable phenomenon embeds into the model's observable projection
+    empirical_adequacy = z3.ForAll([obs], z3.Exists([s], ObsProj(s) == obs))
 
-    print("\n  Philosophical Assessment:")
-    print("  1. Constructive Empiricist Stance (Bas van Fraassen):")
-    if adequate:
-        print("     -> ACCEPT the theory as EMPIRICALLY ADEQUATE. Withhold belief regarding the literal reality of unobservables.")
+    # 2. Definition of Scientific Realism:
+    # Empirical Adequacy AND theoretical posits (quarks, wavefunctions) are physically real
+    realist_commitment = z3.And(
+        empirical_adequacy,
+        z3.ForAll([s], z3.Implies(PositsUnobservable(s), IsPhysicallyReal(s)))
+    )
+
+    solver = z3.Solver()
+    solver.add(empirical_adequacy)
+
+    # Question: Does Empirical Adequacy logically entail Scientific Realism?
+    # (i.e., Does empirical success force us to believe unobservables are physically real?)
+    solver.push()
+    solver.add(z3.Not(realist_commitment))
+    res = solver.check()
+    if res == z3.sat:
+        print("Does Empirical Adequacy entail Scientific Realism? NO (SAT - Constructive Empiricism is logically consistent!)")
+        print("=> Bas van Fraassen's thesis verified: A theory can be completely empirically adequate while its unobservables are not real.")
     else:
-        print("     -> REJECT the theory: Fails empirical adequacy.")
+        print("Does Empirical Adequacy entail Realism? YES")
+    solver.pop()
 
-    print("  2. Scientific Realist Stance (Richard Boyd, Stathis Psillos):")
-    if adequate:
-        print("     -> BELIEVE the theory as APPROXIMATELY TRUE. Commit to the physical existence of posited unobservables (No-Miracles Argument).")
-    else:
-        print("     -> REJECT or refine theoretical postulates.")
-    print("-" * 60)
+    # 3. Boyd's No-Miracles Realist Axiom:
+    # If a theory is empirically adequate, its unobservables are approximately real (to avoid making success a miracle)
+    no_miracles_axiom = z3.Implies(empirical_adequacy, realist_commitment)
+    solver.push()
+    solver.add(no_miracles_axiom)
+    print(f"Under No-Miracles Hypothesis, Realist Commitment is: {solver.check()} (Adoptable by Realists)")
+    solver.pop()
+    print()
 
 
 if __name__ == "__main__":
-    print("=== Week 10: Scientific Realism vs Constructive Empiricism ===\n")
-
-    empirical_observations = {
-        "anomalous_magnetic_moment_g2": 2.00231930436,
-        "cross_section_higgs_fb": 55.6,
-        "spectral_line_shift_nm": 656.28
-    }
-
-    # Model A: Standard Model QFT (Posits unobservable quarks, gluons, vacuum fields)
-    model_sm = TheoreticalModel(
-        name="Standard Model QFT",
-        unobservable_entities={"Quarks", "Gluons", "Higgs Field Vacuum Expectation Value"},
-        observable_predictions={
-            "anomalous_magnetic_moment_g2": 2.00231930436,
-            "cross_section_higgs_fb": 55.6,
-            "spectral_line_shift_nm": 656.28
-        }
-    )
-
-    evaluate_epistemic_stances(model_sm, empirical_observations)
+    print("=== Week 10: Scientific Realism vs Constructive Empiricism (Z3) ===\n")
+    z3_model_theoretic_realism_analysis()

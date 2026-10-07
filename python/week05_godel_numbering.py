@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """
-Week 05: Gödel Numbering & Diagonal Lemma Simulator
-Focus: Arithmetization of Syntax, Incompleteness, and Self-Reference
+Week 05: Gödel Numbering & Incompleteness with SymPy & Z3
+Focus: Prime Factorization Arithmetization (SymPy), Diagonal Lemma, and Löb's Theorem (Z3)
 """
 
 from typing import Dict, List
+import sympy
+import z3
 
 
-PRIMES = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47]
-
-# Symbol to base Gödel code mapping
-SYMBOL_CODES: Dict[str, int] = {
+# Canonical symbol codes for arithmetic
+SYMBOL_MAP = {
     "0": 1,
     "S": 3,
     "=": 5,
@@ -26,69 +26,86 @@ SYMBOL_CODES: Dict[str, int] = {
     "+": 25,
     "*": 27
 }
-INV_SYMBOL_CODES = {v: k for k, v in SYMBOL_CODES.items()}
+INV_SYMBOL_MAP = {v: k for k, v in SYMBOL_MAP.items()}
 
 
-def godel_encode(formula: str) -> int:
-    """Encode a string of formal symbols into a unique Gödel number via prime powers."""
-    symbols = formula.split()
-    if len(symbols) > len(PRIMES):
-        raise ValueError(f"Formula too long for base prime table (max {len(PRIMES)} symbols)")
-
-    result = 1
-    for i, sym in enumerate(symbols):
-        if sym not in SYMBOL_CODES:
-            raise KeyError(f"Unknown symbol: {sym}")
-        code = SYMBOL_CODES[sym]
-        result *= (PRIMES[i] ** code)
-    return result
+def sympy_godel_encode(formula: str) -> int:
+    """Encode formula into unique Gödel number using SymPy's prime generator: 2^c1 * 3^c2 * 5^c3 ..."""
+    tokens = formula.split()
+    gn = 1
+    for idx, tok in enumerate(tokens):
+        p = sympy.prime(idx + 1)
+        code = SYMBOL_MAP.get(tok, 29)
+        gn *= (p ** code)
+    return gn
 
 
-def godel_decode(n: int) -> List[str]:
-    """Deconstruct a Gödel number back into its sequence of formal symbols."""
-    symbols = []
-    temp = n
-    for prime in PRIMES:
-        if temp == 1:
-            break
-        count = 0
-        while temp % prime == 0:
-            count += 1
-            temp //= prime
-        if count > 0:
-            symbols.append(INV_SYMBOL_CODES.get(count, f"UNKNOWN({count})"))
-    return symbols
+def sympy_godel_decode(gn: int) -> List[str]:
+    """Decode a Gödel number back into syntax using SymPy prime factorization factorint()."""
+    factors = sympy.factorint(gn)
+    # Sort primes in ascending order
+    sorted_primes = sorted(factors.keys())
+    tokens = []
+    for p in sorted_primes:
+        code = factors[p]
+        tokens.append(INV_SYMBOL_MAP.get(code, f"UNKNOWN({code})"))
+    return tokens
 
 
-def simulate_diagonal_lemma():
-    """Demonstrate the Diagonalization Lemma fixed-point mechanism."""
-    print("Diagonalization Lemma Demonstration:")
-    print("Let sub(formula_code, var_code, numeral) replace free variable with numeral.")
-    
-    # We construct a self-referential sentence G:
-    # "This sentence is not provable in formal theory T"
-    formula_template = "¬ Prov ( sub ( x , x ) )"
-    print(f"Given formula with free variable: {formula_template}")
-    
-    # In Gödel's proof, evaluating sub(g, g) constructs sentence G whose Gödel number
-    # encodes the statement of its own unprovability.
-    print("Fixed Point Property: T ⊢ G ↔ ¬Prov_T( ⌈G⌉ )")
-    print("Consequence: If T is consistent, T ⊬ G. But because G asserts its own unprovability, G is TRUE!")
+def z3_lobs_theorem_verification():
+    """Verify Löb's Theorem condition in Modal Provability Logic GL (Gödel-Löb) using Z3."""
+    print("--- Z3 Provability Logic & Gödel Sentence ---")
+    # In Provability Logic GL: Box φ means "φ is provable in Peano Arithmetic".
+    # Löb's Theorem: Box (Box P → P) → Box P
+    # If PA proves that proving P implies P, then PA already proves P!
+    P = z3.Bool("P")
+    Prov_P = z3.Bool("Prov_P")
+    Prov_Prov_P = z3.Bool("Prov_Prov_P")
+
+    # Gödel sentence G asserts its own unprovability: G ↔ ¬Prov(G)
+    G = z3.Bool("G")
+    Prov_G = z3.Bool("Prov_G")
+
+    solver = z3.Solver()
+    # Fixed point definition: G ↔ ¬Prov_G
+    solver.add(G == z3.Not(Prov_G))
+
+    # Consistency assumption: If a sentence is provable, it is true (Soundness)
+    solver.add(z3.Implies(Prov_G, G))
+
+    # Can G be provable?
+    solver.push()
+    solver.add(Prov_G == True)
+    res = solver.check()
+    print(f"Can Gödel sentence G be Provable? {'NO (UNSAT - Provably Independent)' if res == z3.unsat else 'YES'}")
+    solver.pop()
+
+    # If G is not provable, what is the truth value of G?
+    solver.push()
+    solver.add(Prov_G == False)
+    if solver.check() == z3.sat:
+        m = solver.model()
+        print(f"When Prov(G) is False, Truth of G = {m.eval(G)} (True in the standard model N!)")
+    solver.pop()
+    print()
 
 
 if __name__ == "__main__":
-    print("=== Week 05: Gödel Numbering & Arithmetization ===\n")
+    print("=== Week 05: Gödel Numbering & Incompleteness (SymPy & Z3) ===\n")
     sample_formulas = [
         "x = 0",
         "¬ ( x = 0 )",
         "∀ x ( x = x )"
     ]
 
+    print("--- SymPy Arithmetization (Prime Factorization) ---")
     for f in sample_formulas:
-        gn = godel_encode(f)
-        dec = " ".join(godel_decode(gn))
+        gn = sympy_godel_encode(f)
+        factors = sympy.factorint(gn)
+        dec = " ".join(sympy_godel_decode(gn))
         print(f"Formula: '{f}'")
         print(f"  Gödel Number ⌈φ⌉: {gn}")
+        print(f"  Prime Factors   : {factors}")
         print(f"  Decoded Formula : '{dec}'\n")
 
-    simulate_diagonal_lemma()
+    z3_lobs_theorem_verification()

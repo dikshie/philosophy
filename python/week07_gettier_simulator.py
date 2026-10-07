@@ -1,100 +1,84 @@
 #!/usr/bin/env python3
 """
-Week 07: Epistemic Logic & Gettier Problem Evaluator
-Focus: Justified True Belief (JTB), Epistemic Luck, and Anti-Luck Defeasibility
+Week 07: Epistemic Logic & Gettier Problem with Z3 SMT Solver
+Focus: Formalizing JTB, SMT Countermodel Generation, and the No-False-Lemma Condition
 """
 
-from typing import Dict
+import z3
 
 
-class BeliefState:
-    def __init__(
-        self,
-        proposition: str,
-        believed: bool,
-        is_true: bool,
-        justified: bool,
-        relies_on_false_lemma: bool,
-        tracks_truth_subjunctively: bool
-    ):
-        self.prop = proposition
-        self.believed = believed
-        self.is_true = is_true
-        self.justified = justified
-        self.relies_on_false_lemma = relies_on_false_lemma
-        self.tracks_truth = tracks_truth_subjunctively
+def z3_gettier_countermodel():
+    print("--- 1. Z3 SMT Analysis of the Gettier Counterexample ---")
+    Agent = z3.DeclareSort("Agent")
+    Proposition = z3.DeclareSort("Proposition")
 
-    def satisfies_classical_jtb(self) -> bool:
-        """The standard Platonic / Tripartite definition: Knowledge = Justified True Belief."""
-        return self.believed and self.is_true and self.justified
+    Believes = z3.Function("Believes", Agent, Proposition, z3.BoolSort())
+    IsTrue = z3.Function("IsTrue", Proposition, z3.BoolSort())
+    Justified = z3.Function("Justified", Agent, Proposition, z3.BoolSort())
+    ReliesOnFalseLemma = z3.Function("ReliesOnFalseLemma", Agent, Proposition, z3.BoolSort())
 
-    def satisfies_no_false_lemma(self) -> bool:
-        """Armstrong / Harman criterion: JTB without inferring via a false premise."""
-        return self.satisfies_classical_jtb() and (not self.relies_on_false_lemma)
+    # Classical Definition: Knowledge ↔ Believed ∧ True ∧ Justified
+    def JTB(a, p):
+        return z3.And(Believes(a, p), IsTrue(p), Justified(a, p))
 
-    def satisfies_nozick_tracking(self) -> bool:
-        """Robert Nozick's Subjunctive Tracking: S believes P, P is true, and if P were false, S would not believe P."""
-        return self.satisfies_classical_jtb() and self.tracks_truth
+    # Anti-luck condition (Armstrong / Harman No-False-Lemma):
+    def NFL_Knowledge(a, p):
+        return z3.And(JTB(a, p), z3.Not(ReliesOnFalseLemma(a, p)))
+
+    smith = z3.Const("Smith", Agent)
+    target_prop = z3.Const("TargetProp", Proposition)  # "The man who gets the job has 10 coins in his pocket"
+
+    solver = z3.Solver()
+    # 1. Smith believes target_prop
+    solver.add(Believes(smith, target_prop) == True)
+    # 2. target_prop is objectively TRUE
+    solver.add(IsTrue(target_prop) == True)
+    # 3. Smith is epistemicly justified in believing target_prop
+    solver.add(Justified(smith, target_prop) == True)
+    # 4. BUT Smith's justification was derived via a false premise ("Jones gets the job")
+    solver.add(ReliesOnFalseLemma(smith, target_prop) == True)
+
+    print("Gettier Setup:")
+    print("  - Believes(Smith, P) = True")
+    print("  - IsTrue(P) = True")
+    print("  - Justified(Smith, P) = True")
+    print("  - ReliesOnFalseLemma(Smith, P) = True")
+
+    if solver.check() == z3.sat:
+        m = solver.model()
+        print("\nSMT Model Evaluation:")
+        val_jtb = m.eval(JTB(smith, target_prop))
+        val_nfl = m.eval(NFL_Knowledge(smith, target_prop))
+        print(f"  -> Classical JTB Satisfied?   : {val_jtb}")
+        print(f"  -> No-False-Lemma Satisfied?  : {val_nfl}")
+        print("  => CONCLUSION: A model exists where JTB is satisfied but knowledge fails due to false lemma dependency!")
+    print()
 
 
-def evaluate_epistemic_case(name: str, state: BeliefState):
-    print(f"Case: {name}")
-    print(f"  Proposition: '{state.prop}'")
-    print(f"  Believed: {state.believed} | True: {state.is_true} | Justified: {state.justified}")
-    print(f"  Relies on False Lemma: {state.relies_on_false_lemma}")
-    print(f"  Tracks Truth Subjunctively: {state.tracks_truth}")
-    
-    jtb = state.satisfies_classical_jtb()
-    nfl = state.satisfies_no_false_lemma()
-    nozick = state.satisfies_nozick_tracking()
-    
-    print(f"  -> Satisfies Classical JTB : {jtb}")
-    print(f"  -> No-False-Lemma Knowledge: {nfl}")
-    print(f"  -> Nozick Tracking Knowledge: {nozick}")
-    if jtb and not nfl:
-        print("  => DIAGNOSIS: GETTIER ANOMALY DETECTED (Epistemic Luck). JTB fails to guarantee genuine knowledge!\n")
-    else:
-        print("  => DIAGNOSIS: Normal Epistemic State.\n")
+def z3_prove_epistemic_veridicality():
+    print("--- 2. Epistemic Veridicality (Axiom T) Prover ---")
+    PropSort = z3.DeclareSort("PropSort")
+    K = z3.Function("K", PropSort, z3.BoolSort())
+    Truth = z3.Function("Truth", PropSort, z3.BoolSort())
+
+    p = z3.Const("p", PropSort)
+    solver = z3.Solver()
+
+    # Axiom T of Epistemic Logic: K(p) → Truth(p) ("One cannot know what is false")
+    axiom_T = z3.ForAll([p], z3.Implies(K(p), Truth(p)))
+
+    solver.add(axiom_T)
+    # Question: Can an agent know a false proposition? (K(p) ∧ ¬Truth(p))
+    solver.push()
+    test_p = z3.Const("test_p", PropSort)
+    solver.add(K(test_p) == True)
+    solver.add(Truth(test_p) == False)
+    res = solver.check()
+    print(f"Can an agent know a falsehood under Axiom T? {'NO (UNSAT - Epistemic Veridicality Preserved)' if res == z3.unsat else 'YES'}")
+    solver.pop()
 
 
 if __name__ == "__main__":
-    print("=== Week 07: Epistemic Logic & Gettier Case Simulator ===\n")
-
-    # Case 1: Standard Valid Knowledge
-    case_normal = BeliefState(
-        proposition="The speed of light in vacuum is invariant",
-        believed=True,
-        is_true=True,
-        justified=True,
-        relies_on_false_lemma=False,
-        tracks_truth_subjunctively=True
-    )
-    evaluate_epistemic_case("Standard Scientific Knowledge", case_normal)
-
-    # Case 2: Classic Gettier Case 1 (Smith and Jones / Job and Coins)
-    # Smith believes: "The man who gets the job has 10 coins in his pocket."
-    # Justification: Smith was told Jones will get the job, and Smith counted 10 coins in Jones's pocket.
-    # False Lemma: "Jones will get the job."
-    # Accidental Truth: Smith gets the job, and Smith unbeknownst to himself has 10 coins in his own pocket!
-    case_gettier_1 = BeliefState(
-        proposition="The person who gets the job has 10 coins in their pocket",
-        believed=True,
-        is_true=True,
-        justified=True,
-        relies_on_false_lemma=True,
-        tracks_truth_subjunctively=False
-    )
-    evaluate_epistemic_case("Gettier Case 1 (Smith & Jones Coins)", case_gettier_1)
-
-    # Case 3: Fake Barn Country (Goldman)
-    # Henry sees a real barn and forms the true justified belief "That is a barn".
-    # But he is surrounded by 99 visually identical papier-mâché fake barns.
-    case_fake_barn = BeliefState(
-        proposition="That object in the field is a barn",
-        believed=True,
-        is_true=True,
-        justified=True,
-        relies_on_false_lemma=False,  # No explicit false premise used
-        tracks_truth_subjunctively=False  # Had it been a fake barn, he still would have believed it was real
-    )
-    evaluate_epistemic_case("Goldman's Fake Barn Country", case_fake_barn)
+    print("=== Week 07: Epistemic Logic & The Gettier Problem (Z3 SMT) ===\n")
+    z3_gettier_countermodel()
+    z3_prove_epistemic_veridicality()

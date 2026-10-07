@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
-Week 03: Turing Machine Simulator & Halting Problem Paradox Demo
-Focus: Formal Computation, Tape Transitions, and Undecidability
+Week 03: Turing Machine Simulator & Z3 Bounded Model Checking (BMC)
+Focus: Deterministic Execution, Halting Decidability, and SMT Reachability Verification
 """
 
 from typing import Dict, List, Tuple
+import z3
 
 
 class TuringMachine:
@@ -61,30 +62,52 @@ class TuringMachine:
         return False, "".join(tape).strip(self.blank), step
 
 
-def simulate_halting_paradox():
-    print("Simulating Diagonalization in the Halting Problem:")
-    print("Suppose an oracle H(code, input) decides whether code halts on input.")
-    
-    def hypothetical_H(program_name: str, inp: str) -> bool:
-        # Mock oracle
-        return True
+def z3_bounded_model_check_reachability(k_steps: int = 5):
+    """Verify state reachability of a discrete transition system using Z3 SMT solver."""
+    print("--- Z3 Bounded Model Checking (BMC) for Turing Invariants ---")
+    # States: 0 = q0 (start), 1 = q1, 2 = q_acc (accept), 3 = q_rej (reject)
+    state = [z3.Int(f"state_{t}") for t in range(k_steps + 1)]
+    tape_val = [z3.Int(f"tape_{t}") for t in range(k_steps + 1)]
 
-    def diagonal_D(program_name: str):
-        # D calls H on (program, program) and does the opposite
-        halts = hypothetical_H(program_name, program_name)
-        if halts:
-            return "Loops forever"
-        else:
-            return "Halts immediately"
+    solver = z3.Solver()
+    # Initial condition: starts at q0 with tape = 0
+    solver.add(state[0] == 0)
+    solver.add(tape_val[0] == 0)
 
-    print("Evaluating D(D):")
-    print(f"If H(D, D) = True, D does: {diagonal_D('D')}")
-    print("Contradiction: D halts iff D does not halt. Therefore H cannot exist.\n")
+    # Transition logic over time steps:
+    # If state=0: transitions to state=1, increments tape by 1
+    # If state=1 and tape > 0: transitions to state=2 (accept)
+    for t in range(k_steps):
+        s_cur = state[t]
+        s_next = state[t + 1]
+        v_cur = tape_val[t]
+        v_next = tape_val[t + 1]
+
+        t_trans = z3.Or(
+            z3.And(s_cur == 0, s_next == 1, v_next == v_cur + 1),
+            z3.And(s_cur == 1, v_cur > 0, s_next == 2, v_next == v_cur),
+            z3.And(s_cur == 2, s_next == 2, v_next == v_cur)  # Halt/Accept
+        )
+        solver.add(t_trans)
+
+    # Question: Is the Accept State (state=2) reachable within k steps?
+    goal = z3.Or([state[t] == 2 for t in range(k_steps + 1)])
+    solver.push()
+    solver.add(goal)
+    if solver.check() == z3.sat:
+        m = solver.model()
+        print(f"Goal (Accept state reachability within {k_steps} steps): REACHABLE (SAT)")
+        trace = [(m.eval(state[t]).as_long(), m.eval(tape_val[t]).as_long()) for t in range(k_steps + 1)]
+        print(f"Verified Execution Trace (State, Tape): {trace}")
+    else:
+        print("Goal: UNREACHABLE")
+    solver.pop()
+    print()
 
 
 if __name__ == "__main__":
-    print("=== Week 03: Turing Machine Simulator ===\n")
-    # Binary Incrementer Machine (adds 1 to a binary string)
+    print("=== Week 03: Turing Machines & SMT Verification ===\n")
+    # Concrete Python Binary Incrementer
     transitions = {
         ("q0", "0"): ("q0", "0", "R"),
         ("q0", "1"): ("q0", "1", "R"),
@@ -102,9 +125,10 @@ if __name__ == "__main__":
     )
 
     inputs = ["1011", "111", "1000"]
+    print("Concrete TM Execution:")
     for inp in inputs:
         accepted, out, steps = tm.run(inp)
-        print(f"Input: {inp} (dec {int(inp, 2)}) -> Output: {out} (dec {int(out, 2)}) in {steps} steps")
-
+        print(f"  Input: {inp} (dec {int(inp, 2)}) -> Output: {out} (dec {int(out, 2)}) in {steps} steps")
     print()
-    simulate_halting_paradox()
+
+    z3_bounded_model_check_reachability(k_steps=4)

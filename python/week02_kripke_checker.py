@@ -1,106 +1,88 @@
 #!/usr/bin/env python3
 """
-Week 02: Modal Logic Kripke Model Checker
-Focus: Possible Worlds, Accessibility Relations, Box (Necessity) & Diamond (Possibility)
+Week 02: Modal Logic & Kripke Semantics with Z3 SMT Solver
+Focus: First-Order Kripke Frame Encoding, S5/S4 Axiom Verification & Countermodels
 """
 
-from typing import Dict, List, Set
+import z3
 
 
-class KripkeFrame:
-    def __init__(self, worlds: List[str], relations: List[tuple]):
-        self.worlds = set(worlds)
-        self.relations = set(relations)  # set of (w1, w2)
+def prove_frame_correspondence_with_z3():
+    print("--- 1. Proving Modal Axiom Correspondence with Z3 ---")
+    World = z3.DeclareSort("World")
+    R = z3.Function("R", World, World, z3.BoolSort())
+    P = z3.Function("P", World, z3.BoolSort())
 
-    def accessible(self, w: str) -> Set[str]:
-        return {w2 for (w1, w2) in self.relations if w1 == w}
+    w = z3.Const("w", World)
+    v = z3.Const("v", World)
+    u = z3.Const("u", World)
 
-    def is_reflexive(self) -> bool:
-        return all((w, w) in self.relations for w in self.worlds)
+    # Modal definition: Box P at world w: ∀v (w R v → P(v))
+    def Box_P(world):
+        v_var = z3.Const("v_acc", World)
+        return z3.ForAll([v_var], z3.Implies(R(world, v_var), P(v_var)))
 
-    def is_symmetric(self) -> bool:
-        return all((w2, w1) in self.relations for (w1, w2) in self.relations)
+    # Modal definition: Diamond P at world w: ∃v (w R v ∧ P(v))
+    def Diamond_P(world):
+        v_var = z3.Const("v_acc", World)
+        return z3.Exists([v_var], z3.And(R(world, v_var), P(v_var)))
 
-    def is_transitive(self) -> bool:
-        for (w1, w2) in self.relations:
-            for (w2_prime, w3) in self.relations:
-                if w2 == w2_prime and (w1, w3) not in self.relations:
-                    return False
-        return True
+    # Theorem 1: If R is reflexive, Axiom T (Box P → P) holds universally
+    solver = z3.Solver()
+    reflexivity = z3.ForAll([w], R(w, w))
+    axiom_T = z3.ForAll([w], z3.Implies(Box_P(w), P(w)))
 
-    def modal_system(self) -> str:
-        refl = self.is_reflexive()
-        symm = self.is_symmetric()
-        trans = self.is_transitive()
-        if refl and symm and trans:
-            return "S5 (Equivalence Relation)"
-        elif refl and trans:
-            return "S4 (Preorder)"
-        elif refl and symm:
-            return "B (Brouwerian)"
-        elif refl:
-            return "T (Reflexive)"
-        else:
-            return "K (Basic Modal Logic)"
+    # Check if Reflexivity ⊢ Axiom T (i.e., Reflexivity ∧ ¬Axiom T is UNSAT)
+    solver.push()
+    solver.add(reflexivity)
+    solver.add(z3.Not(axiom_T))
+    res = solver.check()
+    print(f"Checking Axiom T (Box P → P) on Reflexive Frame: {'VALID (Proven)' if res == z3.unsat else 'FAILED'}")
+    solver.pop()
+
+    # Theorem 2: If R is transitive, Axiom 4 (Box P → Box Box P) holds universally
+    transitivity = z3.ForAll([w, v, u], z3.Implies(z3.And(R(w, v), R(v, u)), R(w, u)))
+    box_box_P = lambda world: z3.ForAll([z3.Const("v1", World)], z3.Implies(R(world, z3.Const("v1", World)), Box_P(z3.Const("v1", World))))
+    axiom_4 = z3.ForAll([w], z3.Implies(Box_P(w), box_box_P(w)))
+
+    solver.push()
+    solver.add(transitivity)
+    solver.add(z3.Not(axiom_4))
+    res = solver.check()
+    print(f"Checking Axiom 4 (Box P → Box Box P) on Transitive Frame: {'VALID (Proven)' if res == z3.unsat else 'FAILED'}")
+    solver.pop()
+
+    # Countermodel: What happens to Axiom T if the frame is NOT reflexive?
+    solver.push()
+    # Serial but not reflexive
+    solver.add(z3.ForAll([w], z3.Exists([v], R(w, v))))
+    solver.add(z3.Not(axiom_T))
+    res = solver.check()
+    if res == z3.sat:
+        print("Non-reflexive frame check: Countermodel found! Axiom T fails without reflexivity.")
+    solver.pop()
+    print()
 
 
-class KripkeModel:
-    def __init__(self, frame: KripkeFrame, valuation: Dict[str, Set[str]]):
-        self.frame = frame
-        # valuation: prop_name -> set of worlds where prop is true
-        self.valuation = valuation
+def evaluate_finite_kripke_model():
+    print("--- 2. Finite Kripke Model Checking ---")
+    worlds = ["w0", "w1", "w2"]
+    relations = {("w0", "w0"), ("w1", "w1"), ("w2", "w2"), ("w0", "w1"), ("w1", "w2"), ("w0", "w2")}
+    val_P = {"w0": True, "w1": True, "w2": False}
 
-    def evaluate(self, formula: dict, world: str) -> bool:
-        op = formula["op"]
-        if op == "atom":
-            prop = formula["name"]
-            return world in self.valuation.get(prop, set())
-        elif op == "not":
-            return not self.evaluate(formula["arg"], world)
-        elif op == "and":
-            return self.evaluate(formula["left"], world) and self.evaluate(formula["right"], world)
-        elif op == "or":
-            return self.evaluate(formula["left"], world) or self.evaluate(formula["right"], world)
-        elif op == "box":  # Necessarily phi: true in all accessible worlds
-            target = formula["arg"]
-            return all(self.evaluate(target, v) for v in self.frame.accessible(world))
-        elif op == "diamond":  # Possibly phi: true in at least one accessible world
-            target = formula["arg"]
-            return any(self.evaluate(target, v) for v in self.frame.accessible(world))
-        else:
-            raise ValueError(f"Unknown operator: {op}")
+    def box_p(w):
+        acc = [v for (u, v) in relations if u == w]
+        return all(val_P[v] for v in acc)
+
+    def diamond_p(w):
+        acc = [v for (u, v) in relations if u == w]
+        return any(val_P[v] for v in acc)
+
+    for w in worlds:
+        print(f"World {w}: P={val_P[w]} | □P={box_p(w)} | ◇P={diamond_p(w)}")
 
 
 if __name__ == "__main__":
-    print("=== Week 02: Modal Logic Kripke Model Checker ===\n")
-    # Define 3 possible worlds: w0 (Actual), w1, w2
-    worlds = ["w0", "w1", "w2"]
-    
-    # S4 / S5 frame construction: Reflexive + Transitive + Symmetric
-    relations = [
-        ("w0", "w0"), ("w1", "w1"), ("w2", "w2"),
-        ("w0", "w1"), ("w1", "w0"),
-        ("w1", "w2"), ("w2", "w1"),
-        ("w0", "w2"), ("w2", "w0")
-    ]
-    frame = KripkeFrame(worlds, relations)
-    print(f"Frame worlds: {worlds}")
-    print(f"Modal classification: {frame.modal_system()}")
-
-    # Valuation: p is true in w0 and w1, false in w2; q is true only in w0
-    valuation = {
-        "p": {"w0", "w1"},
-        "q": {"w0"}
-    }
-    model = KripkeModel(frame, valuation)
-
-    p_atom = {"op": "atom", "name": "p"}
-    box_p = {"op": "box", "arg": p_atom}
-    diamond_p = {"op": "diamond", "arg": p_atom}
-
-    print("\nModel evaluation:")
-    for w in worlds:
-        val_p = model.evaluate(p_atom, w)
-        val_box_p = model.evaluate(box_p, w)
-        val_diam_p = model.evaluate(diamond_p, w)
-        print(f"World {w}: p = {val_p} | □p = {val_box_p} | ◇p = {val_diam_p}")
+    print("=== Week 02: Modal Logic & Kripke Semantics (Z3 SMT) ===\n")
+    prove_frame_correspondence_with_z3()
+    evaluate_finite_kripke_model()

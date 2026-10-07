@@ -1,69 +1,74 @@
 #!/usr/bin/env python3
 """
-Week 09: Popperian Falsification & Duhem-Quine Holism Engine
-Focus: Modus Tollens Asymmetry, Auxiliary Hypotheses, and Underdetermination
+Week 09: Popperian Falsification & Duhem-Quine Holism with Z3 Unsat Cores
+Focus: Modus Tollens Asymmetry, Auxiliary Hypotheses, and SMT Minimal Unsatisfiable Cores
 """
 
-from typing import Dict, List
+import z3
 
 
-class ScientificTheorySystem:
-    def __init__(self, core_law: str, auxiliaries: Dict[str, str]):
-        self.core_law = core_law
-        self.auxiliaries = auxiliaries  # name -> description
-        self.auxiliary_status = {k: True for k in auxiliaries}
+def z3_duhem_quine_unsat_core_diagnosis():
+    print("--- 1. Duhem-Quine Diagnosis via Z3 Unsat Cores ---")
+    # A scientific testing setup:
+    # Core Theory T: Newtonian Gravitation
+    # Auxiliaries:
+    #   A1: Only 7 planets exist in the Solar System
+    #   A2: Telescopes obey ray optics
+    #   A3: Space is Euclidean
+    # Prediction: Observation O (Uranus follows predicted orbit)
 
-    def predict_observation(self, expected_observation: str) -> str:
-        all_true = all(self.auxiliary_status.values())
-        if all_true:
-            return f"Predicts: {expected_observation} under active core and auxiliaries."
-        return "Prediction indeterminate (one or more auxiliaries disabled/modified)."
+    T = z3.Bool("Core_Newtonian_Gravity")
+    A1 = z3.Bool("Aux_Only_7_Planets")
+    A2 = z3.Bool("Aux_Telescope_Optics")
+    A3 = z3.Bool("Aux_Euclidean_Space")
+    O = z3.Bool("Obs_Uranus_Orbit")
 
-    def apply_anomaly(self, observation_failed: bool, strategy: str, target_auxiliary: str = None):
-        """Simulate Duhem-Quine holism: (Core ∧ Aux1 ∧ ... ∧ AuxN) → O.
-           If ¬O occurs, logic alone does not tell which premise to reject."""
-        print(f"\nEmpirical Observation: {'FAILED (¬O)' if observation_failed else 'CONFIRMED (O)'}")
-        if not observation_failed:
-            print("-> Corroboration: Core law survives testing round.")
-            return
+    solver = z3.Solver()
 
-        print("-> Logical deduction: ¬(Core ∧ A1 ∧ A2 ∧ ... ∧ An)")
-        if strategy == "naive_popperian":
-            print("  [Naive Popperian Strategy]: Reject the core theory directly!")
-            print(f"  Result: Core Law '{self.core_law}' is declared FALSIFIED.")
-        elif strategy == "duhem_quine_auxiliary_adjustment":
-            if target_auxiliary and target_auxiliary in self.auxiliary_status:
-                self.auxiliary_status[target_auxiliary] = False
-                print(f"  [Duhem-Quine Strategy]: Preserve Core Law '{self.core_law}'.")
-                print(f"  Result: Modified auxiliary assumption '{target_auxiliary}' ({self.auxiliaries[target_auxiliary]}).")
-                print("  Historical Analog: Postulating Neptune's existence to save Newtonian mechanics from Uranus orbit anomaly!")
-        else:
-            print(f"  Unknown strategy: {strategy}")
+    # The deductive testing bundle: (T ∧ A1 ∧ A2 ∧ A3) → O
+    bundle_law = z3.Implies(z3.And(T, A1, A2, A3), O)
+    solver.add(bundle_law)
+
+    # Empirical Observation ANOMALY: Uranus orbit deviates (¬O)
+    solver.add(O == False)
+
+    # We track which hypotheses are active using Z3 tracked assumptions
+    assumptions = [T, A1, A2, A3]
+
+    print("Testing active hypotheses under observation ¬O:")
+    check_res = solver.check(assumptions)
+    print(f"Joint consistency check: {check_res} (Anomaly detected!)")
+
+    if check_res == z3.unsat:
+        core = solver.unsat_core()
+        print(f"Minimal Inconsistent Set (Unsat Core): {core}")
+        print("=> Duhem-Quine Thesis in Action: Logic refutes the CONJUNCTION, not the Core Law alone!")
+
+    # Duhem-Quine Revision Strategy:
+    # Instead of discarding Core_Newtonian_Gravity, we reject Aux_Only_7_Planets (Postulate Neptune!)
+    print("\nApplying Duhem-Quine Revision (Dropping A1: Only 7 planets):")
+    revised_assumptions = [T, A2, A3]  # A1 is dropped
+    revised_check = solver.check(revised_assumptions)
+    print(f"Revised consistency check with Core Theory retained: {revised_check} (Consistent!)")
+    if revised_check == z3.sat:
+        print("=> The core theory is preserved; auxiliary modification leads to discovery of Neptune (1846).")
+    print()
+
+
+def z3_popperian_modus_tollens():
+    print("--- 2. Popperian Modus Tollens Asymmetry Prover ---")
+    Theory = z3.Bool("Theory")
+    Observation = z3.Bool("Observation")
+
+    solver = z3.Solver()
+    # Modus Tollens: ((T → O) ∧ ¬O) → ¬T
+    modus_tollens = z3.Implies(z3.And(z3.Implies(Theory, Observation), z3.Not(Observation)), z3.Not(Theory))
+    solver.add(z3.Not(modus_tollens))
+    res = solver.check()
+    print(f"Popperian Modus Tollens is valid theorem: {'VALID (Proven)' if res == z3.unsat else 'INVALID'}\n")
 
 
 if __name__ == "__main__":
-    print("=== Week 09: Popperian Demarcation & Duhem-Quine Holism ===\n")
-
-    # Historical Case: Newtonian Celestial Mechanics
-    newton_system = ScientificTheorySystem(
-        core_law="Newton's Law of Universal Gravitation + F = ma",
-        auxiliaries={
-            "A1_solar_system": "The Solar System consists only of the known 7 planets",
-            "A2_optics": "Telescope optical lenses obey geometric ray optics",
-            "A3_rigid_earth": "The Earth is an inertial reference frame with known rotational axis",
-            "A4_vacuum": "Interplanetary space exerts negligible drag force"
-        }
-    )
-
-    print(f"Core Law: {newton_system.core_law}")
-    print("Auxiliary Assumptions:")
-    for k, v in newton_system.auxiliaries.items():
-        print(f"  [{k}]: {v}")
-
-    print("\nTest Case: Orbit of Uranus deviates from prediction!")
-    newton_system.apply_anomaly(
-        observation_failed=True,
-        strategy="duhem_quine_auxiliary_adjustment",
-        target_auxiliary="A1_solar_system"
-    )
-    print("Post-test system status: Core theory preserved, auxiliary A1 rejected -> Discovery of Neptune (1846).")
+    print("=== Week 09: Popperian Demarcation & Duhem-Quine Holism (Z3) ===\n")
+    z3_duhem_quine_unsat_core_diagnosis()
+    z3_popperian_modus_tollens()
